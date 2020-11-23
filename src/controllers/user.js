@@ -3,7 +3,6 @@ const joi = require('joi')
 const upload = require('../helpers/upload').single('avatar')
 const response = require('../helpers/response')
 const multer = require('multer')
-const { APP_URL } = process.env
 
 module.exports = {
   updateUser: (req, res) => {
@@ -55,6 +54,21 @@ module.exports = {
   getUserDetail: async (req, res) => {
     try {
       const { id } = req.user
+      const results = await User.findByPk(id)
+      if (results !== null) {
+        return response(res, `User with id ${id}`, { results })
+      } else {
+        return response(res, 'User not found', {}, 404, false)
+      }
+    } catch (e) {
+      return response(res, 'Internal server error', { error: e.message }, 500, false)
+    }
+  },
+
+  getUserReceipent: async (req, res) => {
+    try {
+      const { id } = req.params
+      console.log(id)
       const results = await User.findByPk(id)
       if (results !== null) {
         return response(res, `User with id ${id}`, { results })

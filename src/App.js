@@ -9,6 +9,7 @@ const { APP_PORT } = process.env
 // Import routes
 const authRoute = require('./routes/auth')
 const userRoute = require('./routes/user')
+const friendRoute = require('./routes/friends')
 
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(morgan('dev'))
@@ -17,6 +18,7 @@ app.use('/uploads', express.static('assets/uploads'))
 
 app.use('/', authRoute)
 app.use('/', userRoute)
+app.use('/', friendRoute)
 
 app.get('/', (req, res) => {
   res.send({

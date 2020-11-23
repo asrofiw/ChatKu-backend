@@ -8,6 +8,9 @@ route.patch('/private/users', authMiddleware, user.updateUser)
 route.get('/private/users', authMiddleware, user.getUserDetail)
 route.delete('/private/users', authMiddleware, user.deleteUser)
 
+// Get user receipent
+route.get('/receipents/:id', authMiddleware, user.getUserReceipent)
+
 // Route for admin
 route.get('/users', user.getUser)
 
