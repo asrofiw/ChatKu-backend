@@ -65,21 +65,6 @@ module.exports = {
     }
   },
 
-  getUserReceipent: async (req, res) => {
-    try {
-      const { id } = req.params
-      console.log(id)
-      const results = await User.findByPk(id)
-      if (results !== null) {
-        return response(res, `User with id ${id}`, { results })
-      } else {
-        return response(res, 'User not found', {}, 404, false)
-      }
-    } catch (e) {
-      return response(res, 'Internal server error', { error: e.message }, 500, false)
-    }
-  },
-
   getUser: async (req, res) => {
     try {
       const results = await User.findAll()

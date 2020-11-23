@@ -1,4 +1,4 @@
-const { Friends } = require('../models')
+const { User, Friends } = require('../models')
 const response = require('../helpers/response')
 const joi = require('joi')
 
@@ -7,32 +7,37 @@ module.exports = {
     try {
       const { id } = req.user
       const schema = joi.object({
-        phone: joi.string().required(),
-        name: joi.string(),
-        about: joi.string()
+        phone: joi.string().required()
       })
       let { value, error } = schema.validate(req.body)
-      let avatar = ''
-      if (req.file) {
-        const { filename } = req.file
-        avatar = `uploads/${filename}`
-        value = {
-          ...value,
-          avatar
-        }
-      } else {
-        avatar = undefined
-      }
-
       if (error) {
         return response(res, 'Error', { error: error.message }, 400, false)
       }
+
+      const checkUser = await User.findOne({
+        where: {
+          phone: value.phone
+        }
+      })
+      if (!checkUser) {
+        return response(res, 'User not registered', { value }, 404, false)
+      }
+
+      const checkSameUser = await User.findByPk(id)
+      if (checkSameUser) {
+        if (value.phone === checkSameUser.phone) {
+          return response(res, 'Cannot add friend', {}, 400, false)
+        }
+      }
+
       value = {
         ...value,
+        name: checkUser.name,
+        avatar: checkUser.avatar,
+        about: checkUser.about,
         user_id: id
       }
       const results = await Friends.create(value)
-      console.log(results)
       return response(res, 'Successfully added new friend', { results }, 200)
     } catch (e) {
       return response(res, 'Internal server error', { error: e.message }, 500, false)
