@@ -11,6 +11,7 @@ module.exports = (sequelize, DataTypes) => {
      */
     static associate (models) {
       // define association here
+      Messages.belongsTo(models.User, { foreignKey: 'user_id' })
     }
   };
   Messages.init({
@@ -19,7 +20,9 @@ module.exports = (sequelize, DataTypes) => {
     recepient: DataTypes.STRING,
     user_id: DataTypes.INTEGER,
     friends_id: DataTypes.INTEGER,
-    isRead: DataTypes.BOOLEAN
+    belongsToId: DataTypes.INTEGER,
+    isRead: DataTypes.BOOLEAN,
+    isLatest: DataTypes.BOOLEAN
   }, {
     sequelize,
     modelName: 'Messages'

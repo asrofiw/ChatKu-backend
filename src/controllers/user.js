@@ -14,10 +14,11 @@ module.exports = {
       }
       try {
         const { id } = req.user
-        const results = await User.findByPk(id)
-        if (results !== null) {
+        const data = await User.findByPk(id)
+        if (data !== null) {
           const schema = joi.object({
-            name: joi.string().max(30)
+            name: joi.string().max(30),
+            about: joi.string()
           })
 
           let { value, error } = schema.validate(req.body)
@@ -37,8 +38,8 @@ module.exports = {
             return response(res, 'Error', { error: error.message }, 400, false)
           }
           if (Object.values(value).length > 0) {
-            await results.update(value)
-            return response(res, 'Data has been updated', { results: value })
+            const results = await data.update(value)
+            return response(res, 'Data has been updated', { results })
           } else {
             return response(res, 'You have to fill at least one of them, if you want to change your data', {}, 400, false)
           }

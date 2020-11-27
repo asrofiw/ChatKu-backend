@@ -1,7 +1,10 @@
-const { User, Friends, Messages } = require('../models')
-const db = require('../models')
+const { User, Messages } = require('../models')
 const response = require('../helpers/response')
 const joi = require('joi')
+const { Op } = require('sequelize')
+const io = require('../App')
+const qs = require('querystring')
+const { APP_URL } = process.env
 
 module.exports = {
   createMessage: async (req, res) => {
@@ -19,27 +22,43 @@ module.exports = {
       }
       const senderMessage = await User.findByPk(id)
       const sender = senderMessage.phone
-      const recepientMessage = await Friends.findOne({
-        where: {
-          id: idFriend,
-          user_id: id
-        }
-      })
+      const recepientMessage = await User.findByPk(idFriend)
       if (recepientMessage) {
         const recepient = recepientMessage.phone
-        value = {
-          ...value,
-          sender,
-          recepient,
-          user_id: id,
-          friend_id: idFriend,
-          isRead: false
-        }
-        const results = await Messages.create(value)
-        if (results) {
-          return response(res, 'Send', { results })
+        if (sender === recepient) {
+          return response(res, 'Cannot send message', {}, 500, false)
         } else {
-          return response(res, 'Failed to post message', {}, 400, false)
+          await Messages.update({ isLatest: false }, {
+            where: {
+              [Op.or]: [
+                {
+                  sender: sender,
+                  recepient: recepient
+                },
+                {
+                  sender: recepient,
+                  recepient: sender
+                }
+              ],
+              isLatest: true || null
+            }
+          })
+          value = {
+            ...value,
+            sender,
+            recepient,
+            user_id: parseInt(idFriend),
+            belongsToId: id,
+            isRead: false,
+            isLatest: true
+          }
+          const results = await Messages.create(value)
+          io.emit(value.user_id, { sender, message: value.message })
+          if (results) {
+            return response(res, 'Send', { results })
+          } else {
+            return response(res, 'Failed to post message', {}, 400, false)
+          }
         }
       } else {
         return response(res, 'Friend not found', {}, 404, false)
@@ -52,12 +71,21 @@ module.exports = {
   getListOfChat: async (req, res) => {
     try {
       const { id } = req.user
-      const senderPhone = await User.findByPk(id)
-      const sender = senderPhone.phone
-      const results = await db.sequelize.query(`SELECT id, MAX(message) as message, sender, recepient, createdAt, updatedAt
-      FROM Messages WHERE sender = ${sender} GROUP BY recepient`, { type: db.sequelize.QueryTypes.SELECT })
-      console.log(Messages.hasOne(Friends))
-      if (results) {
+      const user = await User.findByPk(id)
+      const results = await Messages.findAll({
+        where: {
+          [Op.or]: [
+            { sender: user.phone },
+            { recepient: user.phone }
+          ],
+          isLatest: true
+        },
+        order: [['createdAt', 'DESC']],
+        include: [{
+          model: User
+        }]
+      })
+      if (results.length > 0) {
         return response(res, 'List chat', { results })
       } else {
         return response(res, 'There is no chat', {}, 404, false)
@@ -71,23 +99,82 @@ module.exports = {
     try {
       const { id } = req.user
       const { idFriend } = req.params
+      let { page, limit } = req.query
+      if (!page) {
+        page = 1
+      } else {
+        page = parseInt(page)
+      }
+      if (!limit) {
+        limit = 30
+      } else {
+        limit = parseInt(limit)
+      }
+
       const sender = await User.findByPk(id)
-      const friend = await Friends.findByPk(idFriend)
+      const friend = await User.findByPk(idFriend)
       if (friend) {
         const result = await Messages.findAll({
           where: {
-            sender: sender.phone,
-            recepient: friend.phone
+            [Op.or]: [
+              {
+                sender: sender.phone,
+                recepient: friend.phone
+              },
+              {
+                sender: friend.phone,
+                recepient: sender.phone
+              }
+            ]
           },
-          order: [['createdAt', 'DESC']]
+          order: [['createdAt', 'DESC']],
+          limit: limit,
+          offset: (page - 1) * limit
         })
         if (result) {
           await Messages.update({ isRead: true }, {
             where: {
-              isRead: false
+              isRead: false || null
             }
           })
-          return response(res, `Message from id friend ${idFriend}`, { result })
+          const count = await Messages.count({
+            where: {
+              [Op.or]: [
+                {
+                  sender: sender.phone,
+                  recepient: friend.phone
+                },
+                {
+                  sender: friend.phone,
+                  recepient: sender.phone
+                }
+              ]
+            }
+          })
+          const pageInfo = {
+            count: 0,
+            pages: 0,
+            currentPage: page,
+            limitPerpage: limit,
+            pathNext: null,
+            pathPrev: null,
+            nextLink: null,
+            prevLink: null
+          }
+          pageInfo.count = count
+          pageInfo.pages = Math.ceil(count / limit)
+          const { pages, currentPage } = pageInfo
+
+          if (currentPage < pages) {
+            pageInfo.nextLink = `${APP_URL}private/message/${idFriend}?${qs.stringify({ ...req.query, ...{ page: page + 1 } })}`
+            pageInfo.pathNext = `private/message/${idFriend}?${qs.stringify({ ...req.query, ...{ page: page + 1 } })}`
+          }
+
+          if (currentPage > 1) {
+            pageInfo.prevLink = `${APP_URL}private/message/${idFriend}?${qs.stringify({ ...req.query, ...{ page: page - 1 } })}`
+            pageInfo.pathPrev = `private/message/${idFriend}?${qs.stringify({ ...req.query, ...{ page: page - 1 } })}`
+          }
+          return response(res, `Message from id friend ${idFriend}`, { result, pageInfo })
         } else {
           return response(res, 'Message not found', {}, 404, false)
         }

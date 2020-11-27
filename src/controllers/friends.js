@@ -19,6 +19,7 @@ module.exports = {
           phone: value.phone
         }
       })
+      console.log(checkUser)
       if (!checkUser) {
         return response(res, 'User not registered', { value }, 404, false)
       }
@@ -35,7 +36,8 @@ module.exports = {
         name: checkUser.name,
         avatar: checkUser.avatar,
         about: checkUser.about,
-        user_id: id
+        user_id: id,
+        user_id_friends: checkUser.id
       }
       const results = await Friends.create(value)
       return response(res, 'Successfully added new friend', { results }, 200)
@@ -64,7 +66,7 @@ module.exports = {
       const { idFriend } = req.params
       const results = await Friends.findOne({
         where: {
-          id: idFriend,
+          user_id_friends: idFriend,
           user_id: id
         }
       })
