@@ -1,4 +1,4 @@
-const { User, Messages } = require('../models')
+const { User, Messages, Friends } = require('../models')
 const response = require('../helpers/response')
 const joi = require('joi')
 const { Op } = require('sequelize')
@@ -10,7 +10,8 @@ module.exports = {
   createMessage: async (req, res) => {
     try {
       const { id } = req.user
-      const { idFriend } = req.params
+      let { recepientId } = req.params
+      recepientId = parseInt(recepientId)
 
       const schemaMessage = joi.object({
         message: joi.string().required()
@@ -20,24 +21,22 @@ module.exports = {
       if (error) {
         return response(res, 'Error', { error: error.message }, 400, false)
       }
-      const senderMessage = await User.findByPk(id)
-      const sender = senderMessage.phone
-      const recepientMessage = await User.findByPk(idFriend)
-      if (recepientMessage) {
-        const recepient = recepientMessage.phone
-        if (sender === recepient) {
+      const sender = await User.findByPk(id)
+      const recepient = await User.findByPk(recepientId)
+      if (recepient) {
+        if (id === recepientId) {
           return response(res, 'Cannot send message', {}, 500, false)
         } else {
           await Messages.update({ isLatest: false }, {
             where: {
               [Op.or]: [
                 {
-                  sender: sender,
-                  recepient: recepient
+                  senderId: id,
+                  recepientId: recepientId
                 },
                 {
-                  sender: recepient,
-                  recepient: sender
+                  senderId: recepientId,
+                  recepientId: id
                 }
               ],
               isLatest: true || null
@@ -45,15 +44,27 @@ module.exports = {
           })
           value = {
             ...value,
-            sender,
-            recepient,
-            user_id: parseInt(idFriend),
-            belongsToId: id,
+            sender: sender.phone,
+            recepient: recepient.phone,
+            senderId: id,
+            recepientId: recepientId,
             isRead: false,
             isLatest: true
           }
+          const searchFriend = await Friends.findOne({
+            where: {
+              user_id: id,
+              user_id_friends: recepientId
+            }
+          })
+          if (searchFriend) {
+            value = {
+              ...value,
+              friendId: searchFriend.id
+            }
+          }
           const results = await Messages.create(value)
-          io.emit(value.user_id, { sender, message: value.message })
+          io.emit(recepientId, { id, message: value.message })
           if (results) {
             return response(res, 'Send', { results })
           } else {
@@ -61,7 +72,7 @@ module.exports = {
           }
         }
       } else {
-        return response(res, 'Friend not found', {}, 404, false)
+        return response(res, 'User not found', {}, 404, false)
       }
     } catch (e) {
       return response(res, 'Internal server error', { error: e.message }, 500, false)
@@ -71,22 +82,70 @@ module.exports = {
   getListOfChat: async (req, res) => {
     try {
       const { id } = req.user
-      const user = await User.findByPk(id)
-      const results = await Messages.findAll({
+      let { page, limit } = req.query
+      if (!page) {
+        page = 1
+      } else {
+        page = parseInt(page)
+      }
+      if (!limit) {
+        limit = 10
+      } else {
+        limit = parseInt(limit)
+      }
+      const { count, rows } = await Messages.findAndCountAll({
         where: {
           [Op.or]: [
-            { sender: user.phone },
-            { recepient: user.phone }
+            { senderId: id },
+            { recepientId: id }
           ],
           isLatest: true
         },
         order: [['createdAt', 'DESC']],
-        include: [{
-          model: User
-        }]
+        include: [
+          {
+            model: User,
+            as: 'senderDetail',
+            attributes: ['id', 'name', 'phone', 'avatar', 'about']
+          },
+          {
+            model: User,
+            as: 'recepientDetail',
+            attributes: ['id', 'name', 'phone', 'avatar', 'about']
+          },
+          {
+            model: Friends,
+            as: 'friendDetail',
+            attributes: ['id', 'name', 'phone', 'avatar', 'about', 'user_id_friends']
+          }
+        ],
+        limit: limit,
+        offset: (page - 1) * limit
       })
-      if (results.length > 0) {
-        return response(res, 'List chat', { results })
+      if (rows.length > 0) {
+        const pageInfo = {
+          count: 0,
+          pages: 0,
+          currentPage: page,
+          limitPerpage: limit,
+          pathNext: null,
+          pathPrev: null,
+          nextLink: null,
+          prevLink: null
+        }
+        pageInfo.count = count
+        pageInfo.pages = Math.ceil(count / limit)
+        const { pages, currentPage } = pageInfo
+        if (currentPage < pages) {
+          pageInfo.nextLink = `${APP_URL}private/message/?${qs.stringify({ ...req.query, ...{ page: page + 1 } })}`
+          pageInfo.pathNext = `private/message/?${qs.stringify({ ...req.query, ...{ page: page + 1 } })}`
+        }
+
+        if (currentPage > 1) {
+          pageInfo.prevLink = `${APP_URL}private/message/?${qs.stringify({ ...req.query, ...{ page: page - 1 } })}`
+          pageInfo.pathPrev = `private/message/?${qs.stringify({ ...req.query, ...{ page: page - 1 } })}`
+        }
+        return response(res, 'List chat', { results: rows, pageInfo })
       } else {
         return response(res, 'There is no chat', {}, 404, false)
       }
@@ -98,7 +157,7 @@ module.exports = {
   getDetailChat: async (req, res) => {
     try {
       const { id } = req.user
-      const { idFriend } = req.params
+      const { recepientId } = req.params
       let { page, limit } = req.query
       if (!page) {
         page = 1
@@ -111,75 +170,60 @@ module.exports = {
         limit = parseInt(limit)
       }
 
-      const sender = await User.findByPk(id)
-      const friend = await User.findByPk(idFriend)
-      if (friend) {
-        const result = await Messages.findAll({
+      if (id === recepientId) {
+        return response(res, 'Cannot find message', {}, 400, false)
+      }
+      const { count, rows } = await Messages.findAndCountAll({
+        where: {
+          [Op.or]: [
+            {
+              senderId: id,
+              recepientId: recepientId
+            },
+            {
+              senderId: recepientId,
+              recepientId: id
+            }
+          ]
+        },
+        order: [['createdAt', 'DESC']],
+        limit: limit,
+        offset: (page - 1) * limit
+      })
+
+      if (rows.length > 0) {
+        await Messages.update({ isRead: true }, {
           where: {
-            [Op.or]: [
-              {
-                sender: sender.phone,
-                recepient: friend.phone
-              },
-              {
-                sender: friend.phone,
-                recepient: sender.phone
-              }
-            ]
-          },
-          order: [['createdAt', 'DESC']],
-          limit: limit,
-          offset: (page - 1) * limit
+            isRead: false || null
+          }
         })
-        if (result) {
-          await Messages.update({ isRead: true }, {
-            where: {
-              isRead: false || null
-            }
-          })
-          const count = await Messages.count({
-            where: {
-              [Op.or]: [
-                {
-                  sender: sender.phone,
-                  recepient: friend.phone
-                },
-                {
-                  sender: friend.phone,
-                  recepient: sender.phone
-                }
-              ]
-            }
-          })
-          const pageInfo = {
-            count: 0,
-            pages: 0,
-            currentPage: page,
-            limitPerpage: limit,
-            pathNext: null,
-            pathPrev: null,
-            nextLink: null,
-            prevLink: null
-          }
-          pageInfo.count = count
-          pageInfo.pages = Math.ceil(count / limit)
-          const { pages, currentPage } = pageInfo
 
-          if (currentPage < pages) {
-            pageInfo.nextLink = `${APP_URL}private/message/${idFriend}?${qs.stringify({ ...req.query, ...{ page: page + 1 } })}`
-            pageInfo.pathNext = `private/message/${idFriend}?${qs.stringify({ ...req.query, ...{ page: page + 1 } })}`
-          }
-
-          if (currentPage > 1) {
-            pageInfo.prevLink = `${APP_URL}private/message/${idFriend}?${qs.stringify({ ...req.query, ...{ page: page - 1 } })}`
-            pageInfo.pathPrev = `private/message/${idFriend}?${qs.stringify({ ...req.query, ...{ page: page - 1 } })}`
-          }
-          return response(res, `Message from id friend ${idFriend}`, { result, pageInfo })
-        } else {
-          return response(res, 'Message not found', {}, 404, false)
+        const pageInfo = {
+          count: 0,
+          pages: 0,
+          currentPage: page,
+          limitPerpage: limit,
+          pathNext: null,
+          pathPrev: null,
+          nextLink: null,
+          prevLink: null
         }
+        pageInfo.count = count
+        pageInfo.pages = Math.ceil(count / limit)
+        const { pages, currentPage } = pageInfo
+
+        if (currentPage < pages) {
+          pageInfo.nextLink = `${APP_URL}private/message/${recepientId}?${qs.stringify({ ...req.query, ...{ page: page + 1 } })}`
+          pageInfo.pathNext = `private/message/${recepientId}?${qs.stringify({ ...req.query, ...{ page: page + 1 } })}`
+        }
+
+        if (currentPage > 1) {
+          pageInfo.prevLink = `${APP_URL}private/message/${recepientId}?${qs.stringify({ ...req.query, ...{ page: page - 1 } })}`
+          pageInfo.pathPrev = `private/message/${recepientId}?${qs.stringify({ ...req.query, ...{ page: page - 1 } })}`
+        }
+        return response(res, `Message from id friend ${recepientId}`, { results: rows, pageInfo })
       } else {
-        return response(res, 'Friend not found', {}, 404, false)
+        return response(res, 'Message not found', {}, 404, false)
       }
     } catch (e) {
       return response(res, 'Internal server error', { error: e.message }, 500, false)
@@ -189,12 +233,11 @@ module.exports = {
   deleteMessage: async (req, res) => {
     try {
       const { id } = req.user
-      const { idMessage } = req.params
-      const findSender = await User.findByPk(id)
+      const { messageId } = req.params
       const results = await Messages.findOne({
         where: {
-          id: idMessage,
-          sender: findSender.phone
+          id: messageId,
+          [Op.or]: [{ senderId: id }, { recepientId: id }]
         }
       })
       if (results) {

@@ -1,6 +1,7 @@
 const { User } = require('../models')
 const joi = require('joi')
 const upload = require('../helpers/upload').single('avatar')
+const { Op } = require('sequelize')
 const response = require('../helpers/response')
 const multer = require('multer')
 
@@ -52,7 +53,7 @@ module.exports = {
     })
   },
 
-  getUserDetail: async (req, res) => {
+  getUserLoginDetail: async (req, res) => {
     try {
       const { id } = req.user
       const results = await User.findByPk(id)
@@ -66,10 +67,53 @@ module.exports = {
     }
   },
 
+  getUserDetail: async (req, res) => {
+    try {
+      const { id } = req.params
+      const results = await User.findByPk(id)
+      if (results) {
+        return response(res, `User with id ${id}`, { results })
+      } else {
+        return response(res, 'User not found', {}, 404, false)
+      }
+    } catch (e) {
+      return response(res, 'Internal server error', { error: e.message }, 500, false)
+    }
+  },
+
   getUser: async (req, res) => {
     try {
-      const results = await User.findAll()
-      return response(res, 'List of Users', { results })
+      let { search } = req.query
+      let phone = ''
+      let name = ''
+      if (!search) {
+        search = ''
+      } else if (typeof parseInt(search) === 'number') {
+        phone = search
+      } else if (search === 'string') {
+        name = search
+      }
+      const results = await User.findAll({
+        where: {
+          [Op.or]: [
+            {
+              name: {
+                [Op.substring]: name
+              }
+            },
+            {
+              phone: {
+                [Op.substring]: phone
+              }
+            }
+          ]
+        }
+      })
+      if (results.length > 0) {
+        return response(res, 'List of Users', { results })
+      } else {
+        return response(res, 'User not found', {}, 404, false)
+      }
     } catch (e) {
       return response(res, 'Internal server error', { error: e.message }, 500, false)
     }

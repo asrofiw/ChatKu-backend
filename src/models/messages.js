@@ -11,16 +11,18 @@ module.exports = (sequelize, DataTypes) => {
      */
     static associate (models) {
       // define association here
-      Messages.belongsTo(models.User, { foreignKey: 'user_id' })
+      Messages.belongsTo(models.User, { foreignKey: 'senderId', as: 'senderDetail' })
+      Messages.belongsTo(models.User, { foreignKey: 'recepientId', as: 'recepientDetail' })
+      Messages.belongsTo(models.Friends, { foreignKey: 'friendId', as: 'friendDetail' })
     }
   };
   Messages.init({
     message: DataTypes.STRING,
     sender: DataTypes.STRING,
     recepient: DataTypes.STRING,
-    user_id: DataTypes.INTEGER,
-    friends_id: DataTypes.INTEGER,
-    belongsToId: DataTypes.INTEGER,
+    senderId: DataTypes.INTEGER,
+    recepientId: DataTypes.INTEGER,
+    friendId: DataTypes.INTEGER,
     isRead: DataTypes.BOOLEAN,
     isLatest: DataTypes.BOOLEAN
   }, {
