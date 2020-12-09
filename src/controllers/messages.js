@@ -64,7 +64,7 @@ module.exports = {
             }
           }
           const results = await Messages.create(value)
-          io.emit(recepientId, { id, message: value.message })
+          io.emit(`${recepientId}`, { id, message: value.message })
           if (results) {
             return response(res, 'Send', { results })
           } else {
