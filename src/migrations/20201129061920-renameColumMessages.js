@@ -8,9 +8,9 @@ module.exports = {
      * Example:
      * await queryInterface.createTable('users', { id: Sequelize.INTEGER });
      */
-    await queryInterface.renameColumn('messages', 'user_id', 'senderId')
-    await queryInterface.renameColumn('messages', 'friends_id', 'recepientId')
-    await queryInterface.renameColumn('messages', 'belongsToId', 'friendId')
+    await queryInterface.renameColumn('Messages', 'user_id', 'senderId')
+    await queryInterface.renameColumn('Messages', 'friends_id', 'recepientId')
+    await queryInterface.renameColumn('Messages', 'belongsToId', 'friendId')
   },
 
   down: async (queryInterface, Sequelize) => {
