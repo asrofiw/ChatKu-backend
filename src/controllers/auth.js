@@ -26,7 +26,7 @@ module.exports = {
       } else {
         id = checkExist.id
       }
-      const token = jwt.sign({ id }, APP_KEY)
+      const token = jwt.sign({ id }, APP_KEY, { expiresIn: '10d' })
       return response(res, 'Login successfully', { value, token: token }, 200, true)
     } catch (e) {
       return response(res, 'Internal server error', { error: e.message }, 500, false)
