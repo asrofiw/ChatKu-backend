@@ -83,30 +83,24 @@ module.exports = {
 
   getUser: async (req, res) => {
     try {
-      let { search } = req.query
-      let phone = ''
-      let name = ''
+      const { search } = req.query
+      let data = {}
       if (!search) {
-        search = ''
-      } else if (typeof parseInt(search) === 'number') {
-        phone = search
-      } else if (search === 'string') {
-        name = search
+        data = {}
+      } else {
+        if (isNaN(search)) {
+          data = {
+            name: { [Op.substring]: search }
+          }
+        } else {
+          data = {
+            phone: { [Op.substring]: search }
+          }
+        }
       }
       const results = await User.findAll({
         where: {
-          [Op.or]: [
-            {
-              name: {
-                [Op.substring]: name
-              }
-            },
-            {
-              phone: {
-                [Op.substring]: phone
-              }
-            }
-          ]
+          ...data
         }
       })
       if (results.length > 0) {
