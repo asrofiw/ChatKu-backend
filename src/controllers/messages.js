@@ -192,12 +192,6 @@ module.exports = {
       })
 
       if (rows.length > 0) {
-        await Messages.update({ isRead: true }, {
-          where: {
-            isRead: false || null
-          }
-        })
-
         const pageInfo = {
           count: 0,
           pages: 0,
@@ -224,6 +218,28 @@ module.exports = {
         return response(res, `Message from id friend ${recepientId}`, { results: rows, pageInfo })
       } else {
         return response(res, 'Message not found', {}, 404, false)
+      }
+    } catch (e) {
+      return response(res, 'Internal server error', { error: e.message }, 500, false)
+    }
+  },
+
+  updateReadMessage: async (req, res) => {
+    try {
+      const { id } = req.user
+      const { recepientId } = req.params
+      const results = await Messages.update({ isRead: true }, {
+        where: {
+          isRead: false,
+          [Op.or]: [
+            { senderId: id, recepientId: recepientId },
+            { recepientId: id, senderId: recepientId }
+          ]
+        }
+      })
+
+      if (results) {
+        return response(res, 'Message has been read', {}, 200)
       }
     } catch (e) {
       return response(res, 'Internal server error', { error: e.message }, 500, false)
